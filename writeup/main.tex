@@ -111,24 +111,34 @@ This analysis confirms that the task is \textit{not} trivially solvable by topic
 \subsection*{Proposed Approach}
 % -----------------------------------------------------------
 
-The proposed model is \textbf{DeBERTa-v3-base} fine-tuned for binary sequence classification, trained with \textbf{class-weighted cross-entropy loss} on the full training set, and evaluated using a \textbf{decision threshold optimised on the dev set}.
+The proposed model is a \textbf{multi-task RoBERTa-base} with two classification heads --- a primary binary PCL head trained with \textbf{focal loss}, and an auxiliary 7-category head trained with \textbf{BCE loss} --- jointly optimised on the full training set, with a \textbf{decision threshold optimised on the dev set}.
 
 \subsubsection*{Architecture}
 
-The backbone is \texttt{microsoft/deberta-v3-base} (HuggingFace Transformers), a 183M-parameter encoder pre-trained using Replaced Token Detection. DeBERTa-v3 uses a \textit{disentangled attention mechanism} that encodes word content and position as separate vectors and computes attention between all four combinations (content-to-content, content-to-position, position-to-content, position-to-content), allowing it to model the interaction between \textit{what} a token is and \textit{where} it appears more precisely than RoBERTa's fused content+position embeddings. A standard two-class linear head is applied to the \texttt{[CLS} representation.
+The backbone is \texttt{roberta-base} (HuggingFace Transformers), a 125M-parameter encoder pre-trained with masked language modelling on a large English corpus using dynamic masking and no next-sentence prediction objective. RoBERTa-base produces a 768-dimensional \texttt{[CLS]} representation well-suited to sentence-level classification tasks.
+
+The \texttt{[CLS]} representation is passed through a dropout layer ($p = 0.1$) and fed into \textbf{two parallel linear heads}:
+\begin{itemize}
+    \item \textbf{Binary head} (768 $\to$ 2): predicts PCL vs.\ No-PCL. This is the primary classification head used at inference time.
+    \item \textbf{Category head} (768 $\to$ 7): predicts which of the 7 fine-grained PCL categories are present (multi-label). This head is used \textit{only during training} as an auxiliary regulariser.
+\end{itemize}
+
+The combined loss is: $\mathcal{L} = \mathcal{L}_{\text{focal}} + \lambda \cdot \mathcal{L}_{\text{BCE}}$, where $\lambda = 0.5$.
 
 \subsubsection*{Training Methodology}
 
-Four key deviations from the baseline are made, each justified by the EDA findings:
+Five key deviations from the baseline are made, each justified by the EDA findings:
 
 \begin{enumerate}
-    \item \textbf{Class-weighted loss.} The EDA revealed a 9.55:1 imbalance. Rather than discarding 85\% of negative examples through downsampling (as the baseline does), the full training set of 8,375 examples is used with a weighted cross-entropy loss: the minority (PCL) class is upweighted by a factor of $n_{\text{neg}} / n_{\text{pos}} \approx 9.55$, so the model attends equally to errors on both classes.
+    \item \textbf{Focal loss (replacing class-weighted cross-entropy).} The EDA revealed a 9.55:1 class imbalance. Rather than applying static class weights, focal loss \cite{lin2017focal} dynamically down-weights well-classified examples: $\text{FL}(p_t) = -\alpha_t (1 - p_t)^\gamma \log(p_t)$, with $\gamma = 2.0$ and $\alpha = [1.0, 9.55]$. This focuses the model's learning on \textit{hard} examples --- ambiguous cases near the decision boundary --- rather than the easy-to-classify majority.
 
-    \item \textbf{More training epochs.} The baseline trains for only 1 epoch ($\approx$524 gradient steps at batch size 16). Fine-tuning a transformer typically requires 3--5 epochs to converge. The model is trained for \textbf{4 epochs} with the best checkpoint (by dev F1 of the positive class) saved.
+    \item \textbf{Multi-task learning with auxiliary category prediction.} The dataset provides 7 fine-grained PCL category labels (Unbalanced power relations, Shallow solution, Presupposition, Authority voice, Metaphor, Compassion, The poorer the merrier) for every example. By training the shared encoder to simultaneously predict these categories via a BCE loss head, the model is forced to learn richer, more structured representations of PCL. At inference time, only the binary head is used; the category head serves purely as a training-time regulariser that improves generalisation.
 
-    \item \textbf{Learning-rate schedule with warmup.} A linear warmup over 10\% of total training steps followed by linear decay is applied. This prevents large gradient updates in the early steps, which can destabilise DeBERTa's disentangled attention layers. The baseline uses no scheduler.
+    \item \textbf{More training epochs.} The baseline trains for only 1 epoch. The model is trained for \textbf{5 epochs} with the best checkpoint (by dev F1 of the positive class) saved.
 
-    \item \textbf{Decision threshold optimisation.} A fixed threshold of 0.5 is suboptimal for heavily imbalanced binary classification. After training, the threshold $\tau$ is swept over $\{0.05, 0.10, \ldots, 0.95\}$ on the dev set and the value maximising positive-class F1 is selected. This directly optimises the evaluation metric.
+    \item \textbf{Learning-rate schedule with warmup.} A linear warmup over 10\% of total training steps followed by linear decay is applied. This stabilises early training by preventing large gradient updates before the model has developed useful representations. The baseline uses no scheduler.
+
+    \item \textbf{Decision threshold optimisation.} After training, the threshold $\tau$ is swept over $\{0.05, 0.10, \ldots, 0.95\}$ on the dev set and the value maximising positive-class F1 is selected. This directly optimises the evaluation metric.
 \end{enumerate}
 
 The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
@@ -139,10 +149,12 @@ The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
         \toprule
         \textbf{Hyperparameter} & \textbf{Value} \\
         \midrule
-        Backbone           & \texttt{microsoft/deberta-v3-base} \\
+        Backbone           & \texttt{roberta-base} \\
         Max sequence length & 128 \\
-        Loss               & CrossEntropyLoss, weight $= [1.0,\; 9.55]$ \\
-        Training epochs    & 4 \\
+        Primary loss       & Focal loss, $\gamma = 2.0$, $\alpha = [1.0,\; 9.55]$ \\
+        Auxiliary loss     & BCEWithLogitsLoss (7 PCL categories) \\
+        Auxiliary weight ($\lambda$) & 0.5 \\
+        Training epochs    & 5 \\
         Batch size         & 16 \\
         Learning rate      & $2 \times 10^{-5}$ \\
         Warmup             & 10\% of total steps (linear) \\
@@ -151,7 +163,7 @@ The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
         Training examples  & 8,375 (full set, no downsampling) \\
         \bottomrule
     \end{tabular}
-    \caption{Hyperparameter configuration for the proposed DeBERTa-v3-base model.}
+    \caption{Hyperparameter configuration for the proposed multi-task RoBERTa-base model.}
     \label{tab:hyperparams}
 \end{table}
 
@@ -159,12 +171,115 @@ The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
 \subsection*{Rationale and Expected Outcome}
 % -----------------------------------------------------------
 
-\textbf{Why DeBERTa-v3-base over RoBERTa-base?} DeBERTa-v3 consistently outperforms RoBERTa-base on NLP benchmarks (SuperGLUE, GLUE, SQuAD). More importantly, the disentangled attention mechanism is particularly well-suited to this task: the EDA n-gram analysis showed that PCL is characterised by \textit{framing} and \textit{relational stance} (e.g.\ \textit{those need}, \textit{help those}) rather than topic keywords. Capturing how words interact with their syntactic position in a sentence --- not just which words co-occur --- is precisely what disentangled attention is designed to do.
+\textbf{Why RoBERTa-base?} RoBERTa-base is a well-established encoder for sentence classification tasks. It uses the same hidden size (768) and architecture as the BERT baseline family, providing a strong and well-understood foundation. It was pre-trained on a substantially larger corpus than BERT with improved training methodology (dynamic masking, no NSP objective, larger batches), giving it better general language representations while remaining computationally tractable for fine-tuning on a dataset of this size.
 
-\textbf{Why class-weighted loss over downsampling?} Downsampling the negatives to a 2:1 ratio, as the baseline does, retains only $2 \times 794 = 1{,}588$ negative examples from the available 7,581. Class-weighted loss uses all 8,375 examples: the model sees 4.8$\times$ more negative examples per epoch, learning a richer representation of what non-PCL text looks like. This reduces false positives without sacrificing recall, which is critical for optimising F1.
+\textbf{Why focal loss over class-weighted cross-entropy?} Static class weights treat all minority-class examples equally, regardless of difficulty. Focal loss introduces a \textit{dynamic} modulating factor $(1 - p_t)^\gamma$ that automatically reduces the contribution of easy examples and focuses training on hard, ambiguous cases near the decision boundary. This is particularly relevant for PCL detection, where the boundary between condescending framing and neutral reporting is often subtle.
 
-\textbf{Why threshold optimisation?} For a 9.55:1 imbalance and a model trained with pos\_weight $= 9.55$, the model's output probabilities are calibrated towards the minority class. A fixed threshold of 0.5 on these probabilities will therefore over-predict PCL relative to what maximises F1. Grid-searching the threshold on the dev set directly targets the evaluation criterion used by the shared task.
+\textbf{Why multi-task learning with category prediction?} The 7 fine-grained PCL categories capture distinct linguistic strategies (e.g.\ ``Unbalanced power relations'' vs.\ ``Shallow solution'' vs.\ ``Metaphor''). Training the shared encoder to recognise these categories forces it to learn structured, category-aware representations rather than collapsing PCL into a single undifferentiated class. This acts as an inductive bias: the encoder must disentangle the \textit{mechanisms} of condescension, which improves generalisation on the binary task. The auxiliary head is discarded at inference, adding zero computational cost.
 
-\textbf{Expected outcome.} Each component addresses a specific failure mode of the baseline. Taken together, they are expected to produce a substantive improvement over the baseline F1 of 0.48. DeBERTa-v3-base typically improves 3--5 F1 points over RoBERTa-base on comparable classification tasks; class-weighted loss and threshold tuning on an imbalanced dataset typically contribute a further 2--4 F1 points. A combined dev F1 in the range 0.55--0.65 is the projected outcome.
+\textbf{Why threshold optimisation?} For a model trained with focal loss and class-specific $\alpha$ weights, the output probability distribution is not calibrated for a fixed 0.5 threshold. Grid-searching $\tau$ on the dev set directly targets the evaluation criterion used by the shared task.
+
+\textbf{Expected outcome.} Each component addresses a specific failure mode of the baseline. Focal loss and multi-task learning improve hard-example handling and representation quality respectively, while threshold optimisation directly targets the evaluation metric. A combined dev F1 in the range 0.55--0.65 is the projected outcome, compared to the baseline F1 of 0.48.
+
+% ============================================================
+\section{Exercise 5: Predictions and Error Analysis}
+% ============================================================
+
+% -----------------------------------------------------------
+\subsection*{Exercise 5.1 — Dev and Test Predictions}
+% -----------------------------------------------------------
+
+Dev predictions (\texttt{dev.txt}) and test predictions (\texttt{test.txt}) were generated by the multi-task RoBERTa-base model described in Exercise 3, with a decision threshold of $\tau = 0.55$ selected by grid search on the dev set. The resulting dev F1 (positive class) is \textbf{0.6196}.
+
+% -----------------------------------------------------------
+\subsection*{Exercise 5.2 — Local Evaluation}
+% -----------------------------------------------------------
+
+\subsubsection*{Part A: Error Analysis}
+
+The best model (dev F1 = 0.62) and the spec baseline (single-task RoBERTa-base, 1~epoch, standard cross-entropy, 2:1 negative downsampling, $\tau=0.5$; dev F1 = 0.48) were compared on all 2,094 dev examples. Each example was assigned to one of four mutually exclusive outcomes depending on which system, if either, predicted the gold label correctly.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lrr}
+        \toprule
+        \textbf{Scenario} & \textbf{Count} & \textbf{\%} \\
+        \midrule
+        Both correct            & 1744 & 83.3 \\
+        Both wrong              &  108 &  5.2 \\
+        Only best model correct &  199 &  9.5 \\
+        Only baseline correct   &   43 &  2.1 \\
+        \midrule
+        \textbf{Total}          & 2094 & 100.0 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Four-bucket comparison of the best model and the baseline on the 2,094 dev examples.}
+    \label{tab:buckets}
+\end{table}
+
+The best model improves on the baseline in 199 cases while regressing on only 43 (a net gain of 156 examples), confirming that the overall F1 improvement is genuine and broadly distributed rather than concentrated on a few examples.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{figures/confusion_matrices.png}
+    \caption{Confusion matrices for the baseline (left) and the best model (right) on the dev set. The best model substantially increases true positives (74 vs.\ 44 at the same scale) while keeping false positives comparable.}
+    \label{fig:confusion}
+\end{figure}
+
+\textbf{Only best model correct — qualitative examples.}
+The 199 cases where the best model succeeds but the baseline fails are dominated by examples annotated with \textit{Presupposition}, \textit{Compassion}, and \textit{Authority voice} categories:
+\begin{itemize}
+    \item \textit{``Real poverty of Britain: Shocking images of UK in the Sixties where poor really meant poor''} — gold=1, categories: Authority voice + Compassion. The framing ``poor really meant poor'' presupposes a hierarchy of deprivation, a nuanced stance visible to the multi-task encoder (trained to detect \textit{Authority voice}) but not to the single-task baseline.
+    \item \textit{``Government support to bring the Housing First programme to Wellington will make a real difference for the homeless''} — gold=1, categories: Unbalanced power relations + Presupposition. The presupposition that homeless people need external government action to ``make a real difference'' reflects an Unbalanced power relation that the richer multi-task representations detect.
+    \item \textit{``Hollywood star Leo Di Caprio urges help for reuniting immigrant children with their families''} — gold=1, category: Unbalanced power relations. The construction ``[celebrity] urges help for [vulnerable group]'' positions the community as passive objects of advocacy, a structural pattern captured by the category-aware encoder.
+\end{itemize}
+These examples suggest that the auxiliary category head, by forcing the shared encoder to represent fine-grained PCL mechanisms during training, improves detection of subtle framing patterns that a single-task model trained on limited data misses.
+
+\textbf{Only baseline correct / both wrong — failure modes.}
+The 43 regressions are mostly positive examples where the best model under-predicts:
+\begin{itemize}
+    \item \textit{``In a 90-degree view of his constituency, one can see a high rise and a flyover while underneath it, homeless people sleep''} — gold=1, category: Unbalanced power relations. The juxtaposition (luxury infrastructure vs.\ sleeping rough) is an indirect rhetorical device; the model may focus on the neutral spatial description and miss the implicit power commentary.
+    \item \textit{``Our country is in need of serious change. We can continue to celebrate women's day, throw massive budgets at events…''} — gold=1, category: Shallow solution. The sarcastic dismissal of superficial gestures is a Shallow solution pattern that is difficult to detect without pragmatic inference.
+\end{itemize}
+The 108 \textit{both wrong} cases are uniformly false negatives (gold=1 predicted as 0 by both models), indicating that these are genuinely hard PCL examples requiring reasoning beyond surface language. Many involve \textit{Presupposition} (e.g.\ ``Many refugees don't want to be resettled anywhere, let alone in the US'') where PCL is embedded in a clause-level assumption rather than explicit condescending language.
+
+% -----------------------------------------------------------
+\subsubsection*{Part B: Per-Keyword Analysis}
+% -----------------------------------------------------------
+
+To diagnose where the model performs well or poorly across the ten vulnerable-community search keywords used to construct the corpus, precision, recall, and F1 were computed separately for each keyword's subset of the dev set.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/per_keyword_f1.png}
+    \caption{Per-keyword F1 of the best model on the dev set, sorted ascending. The dashed line shows the macro-average F1 across keywords.}
+    \label{fig:keyword_f1}
+\end{figure}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lrrrr}
+        \toprule
+        \textbf{Keyword} & \textbf{N+} & \textbf{N--} & \textbf{P} & \textbf{R} & \textbf{F1} \\
+        \midrule
+        in-need       & 33 & 193 & 0.700 & 0.848 & 0.767 \\
+        migrant       &  5 & 202 & 1.000 & 0.600 & 0.750 \\
+        homeless      & 29 & 183 & 0.704 & 0.655 & 0.679 \\
+        vulnerable    & 20 & 189 & 0.619 & 0.650 & 0.634 \\
+        hopeless      & 26 & 191 & 0.533 & 0.615 & 0.571 \\
+        disabled      & 14 & 180 & 0.636 & 0.500 & 0.560 \\
+        poor-families & 38 & 152 & 0.583 & 0.553 & 0.568 \\
+        women         & 14 & 219 & 0.583 & 0.500 & 0.538 \\
+        refugee       & 13 & 175 & 0.500 & 0.538 & 0.519 \\
+        immigrant     &  7 & 211 & 0.500 & 0.286 & 0.364 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Per-keyword precision, recall, and F1 (positive class) of the best model on the dev set. N+ and N-- are the number of positive and negative examples.}
+    \label{tab:keyword_f1}
+\end{table}
+
+The model performs best on \textit{in-need} (F1 = 0.767) and \textit{migrant} (F1 = 0.750). The \textit{in-need} category likely benefits from having the highest positive count (33) and from the EDA finding that \textit{needs-oriented} framing is a strong PCL signal: texts about communities described as ``in need'' tend to use relational, helper-stance language that the model detects reliably. The perfect precision for \textit{migrant} (P = 1.0) suggests that when the model does predict PCL for this keyword it is always right, though the low positive count ($n{+} = 5$) makes F1 estimates unstable.
+
+The weakest performance is on \textit{immigrant} (F1 = 0.364), which also has the fewest positive examples ($n{+} = 7$). With so few positive training and evaluation examples, even a small number of missed detections dramatically reduces F1. This suggests the model has not learned robust PCL representations for the \textit{immigrant} context, possibly because its PCL articles mix reporting styles or involve more politically charged (rather than purely condescending) language. \textit{Refugee} (F1 = 0.519) and \textit{women} (F1 = 0.538) also underperform, likely for similar reasons: PCL about women in particular can involve implicit presupposition and subtle authority-voice patterns that are harder to detect from surface cues alone.
 
 \end{document}

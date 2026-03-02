@@ -1,6 +1,6 @@
 """Generate dev.txt and test.txt prediction files (Exercise 5.1).
 
-Loads the best DeBERTa-v3-base checkpoint, sweeps the decision threshold on
+Loads the best multi-task DeBERTa checkpoint, sweeps the decision threshold on
 the dev set to maximise positive-class F1, then writes predictions for both
 dev and test splits.
 
@@ -11,20 +11,24 @@ Usage:
     python src/predict.py
 """
 
+import sys
 from pathlib import Path
 import json
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset as TorchDataset
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer
 from sklearn.metrics import f1_score
 
 from data_utils import load_dev, load_test
 
-
 REPO_ROOT = Path(__file__).parent.parent
-CHECKPOINT_DIR = REPO_ROOT / "checkpoints" / "deberta_best"
+sys.path.insert(0, str(REPO_ROOT / "BestModel"))
+
+from model import MultiTaskModel
+
+CHECKPOINT_DIR = REPO_ROOT / "checkpoints" / "roberta_best"
 MAX_LENGTH = 128
 BATCH_SIZE = 32
 
@@ -69,7 +73,7 @@ def _get_probs(
     tokenizer,
     device: torch.device,
 ) -> np.ndarray:
-    """Return softmax P(label=1) for each record."""
+    """Return softmax P(label=1) for each record using the binary head."""
     texts = [r["text"] for r in records]
     dataset = InferenceDataset(texts, tokenizer)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE)
@@ -79,8 +83,9 @@ def _get_probs(
     with torch.no_grad():
         for batch in loader:
             batch = {k: v.to(device) for k, v in batch.items()}
-            logits = model(**batch).logits
-            probs = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
+            outputs = model(**batch)
+            binary_logits = outputs["binary_logits"]
+            probs = torch.softmax(binary_logits, dim=-1)[:, 1].cpu().numpy()
             all_probs.append(probs)
 
     return np.concatenate(all_probs)
@@ -91,8 +96,8 @@ def find_best_threshold(
     model,
     tokenizer,
     device: torch.device,
-) -> tuple[float, float]:
-    """Sweep threshold on dev set; return (best_tau, best_f1)."""
+) -> tuple[float, float, np.ndarray]:
+    """Sweep threshold on dev set; return (best_tau, best_f1, probs)."""
     probs = _get_probs(dev_records, model, tokenizer, device)
     labels = [r["label"] for r in dev_records]
 
@@ -103,7 +108,7 @@ def find_best_threshold(
         if f1 > best_f1:
             best_f1, best_tau = f1, float(tau)
 
-    return best_tau, best_f1
+    return best_tau, best_f1, probs
 
 
 def predict(records: list[dict], tau: float | None = None) -> list[int]:
@@ -111,7 +116,11 @@ def predict(records: list[dict], tau: float | None = None) -> list[int]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tokenizer = AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR))
-    model = AutoModelForSequenceClassification.from_pretrained(str(CHECKPOINT_DIR))
+    model = MultiTaskModel()
+    state_dict = torch.load(
+        CHECKPOINT_DIR / "model.pt", map_location=device, weights_only=True
+    )
+    model.load_state_dict(state_dict)
     model.to(device)
 
     # Threshold: use provided value, or read persisted one, or default 0.5
@@ -136,13 +145,17 @@ if __name__ == "__main__":
     print(f"Device: {device}")
 
     tokenizer = AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR))
-    model = AutoModelForSequenceClassification.from_pretrained(str(CHECKPOINT_DIR))
+    model = MultiTaskModel()
+    state_dict = torch.load(
+        CHECKPOINT_DIR / "model.pt", map_location=device, weights_only=True
+    )
+    model.load_state_dict(state_dict)
     model.to(device)
 
     # Tune threshold on dev
     dev_records = load_dev()
     print(f"Sweeping threshold on {len(dev_records)} dev examples ...")
-    tau, dev_f1 = find_best_threshold(dev_records, model, tokenizer, device)
+    tau, dev_f1, dev_probs = find_best_threshold(dev_records, model, tokenizer, device)
     print(f"Best threshold: {tau:.2f}  ->  dev F1 (positive class): {dev_f1:.4f}")
 
     # Persist threshold
@@ -150,8 +163,7 @@ if __name__ == "__main__":
         json.dumps({"threshold": tau, "dev_f1": dev_f1}, indent=2)
     )
 
-    # Dev predictions
-    dev_probs = _get_probs(dev_records, model, tokenizer, device)
+    # Dev predictions (reuse probs already computed during threshold sweep)
     dev_preds = (dev_probs >= tau).astype(int).tolist()
     write_predictions(dev_preds, REPO_ROOT / "dev.txt")
 

@@ -206,6 +206,17 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# LaTeX temp files
+writeup/*.aux
+writeup/*.log
+writeup/*.out
+writeup/*.toc
+writeup/*.fls
+writeup/*.fdb_latexmk
+writeup/*.synctex.gz
+writeup/*.bbl
+writeup/*.blg
+
 # NLP Coursework — data and model weights
 *.bin
 *.pt
