@@ -207,7 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 # NLP Coursework — data and model weights
-data/
 *.bin
 *.pt
 *.safetensors
