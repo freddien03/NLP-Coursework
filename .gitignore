@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# NLP Coursework — data and model weights
+data/
+*.bin
+*.pt
+*.safetensors
+figures/
+
+# MacOS
+.DS_Store

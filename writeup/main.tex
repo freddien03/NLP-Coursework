@@ -1,0 +1,170 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{parskip}
+
+\title{NLP Coursework}
+\author{Freddie Nunn}
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+% GitHub/GitLab repository link (Exercise 4)
+% \textbf{Repository:} \url{TODO}
+
+% Leaderboard name (Exercise 5.1)
+% \textbf{Leaderboard name:} TODO
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Exercise 1: Critical Paper Review}
+% ============================================================
+
+\noindent\textit{Paper reviewed:} Pérez-Almendros et al., ``Don't Patronize Me! An Annotated Dataset with Patronizing and Condescending Language towards Vulnerable Communities'', COLING 2020.
+
+% -----------------------------------------------------------
+\subsection*{Q1. Primary Contributions}
+% -----------------------------------------------------------
+
+The paper makes three main contributions.
+
+\textbf{A new annotated dataset.} The central contribution is the \textit{Don't Patronize Me!} (DPM) dataset: 10,637 paragraphs drawn from the News on Web (NoW) corpus, spanning 20 English-speaking countries and 10 keywords associated with vulnerable communities (e.g.\ \textit{refugee}, \textit{homeless}, \textit{women}). Each paragraph is annotated for the presence of Patronising and Condescending Language (PCL) towards vulnerable groups. Prior to this work, no large-scale dataset existed specifically targeting PCL in media discourse; related corpora (e.g.\ the Talkdown corpus of Wang and Potts, 2019) focused on direct social-media interactions rather than journalistic language.
+
+\textbf{A taxonomy of PCL categories.} The authors introduce a two-level taxonomy of seven fine-grained PCL categories grouped under three higher-level types: \textit{The Saviour} (Unbalanced power relations, Shallow solution), \textit{The Expert} (Presupposition, Authority voice), and \textit{The Poet} (Metaphor, Compassion, The poorer, the merrier). This taxonomy is grounded in sociolinguistic theory and operationalised for NLP annotation, enabling fine-grained, span-level labelling that goes beyond binary PCL detection.
+
+\textbf{Baseline experiments.} The paper provides a systematic empirical evaluation across a range of models — from TF-IDF SVMs and Word2Vec-based BiLSTMs to fine-tuned BERT, RoBERTa, and DistilBERT — on both binary PCL detection (Task 1) and multi-label category classification (Task 2). These baselines establish a performance floor and surface which PCL categories are hardest for current NLP systems.
+
+% -----------------------------------------------------------
+\subsection*{Q2. Technical Strengths}
+% -----------------------------------------------------------
+
+\textbf{Careful, multi-stage annotation design.} Rather than asking annotators for a simple binary label, the authors use a three-way per-annotator scale (0 = no PCL, 1 = borderline, 2 = clear PCL), then combine the two primary annotators' judgements into a 5-point composite score and route all total disagreements (0 vs.\ 2) to a third referee annotator. This design captures genuine annotation uncertainty and produces a more nuanced label distribution, avoiding the artefacts that arise when borderline cases are forced into hard categories. Reporting Inter-Annotator Agreement both with and without borderline cases (41\% vs.\ 61\% Cohen's Kappa) honestly conveys both the difficulty of the task and the achievable upper bound.
+
+\textbf{Thorough and transparent error analysis.} Tables 5 and 6 present concrete misclassified examples with gold and predicted labels. The analysis explains \textit{why} the model fails in each case — for instance, that flowery adjectives associated with the Compassion category can appear in non-condescending political writing, causing false positives, or that detecting Presupposition requires external world knowledge unavailable to the model. This level of qualitative insight goes beyond reporting aggregate metrics and makes the paper genuinely useful for researchers designing future models.
+
+\textbf{Breadth of baseline models.} By including models spanning the full complexity spectrum — random guessing, BoW SVM, word-embedding SVM, BiLSTM, and four BERT-family variants — the paper gives a clear picture of where complexity pays off and where it does not (notably, BERT-large underperforms BERT-base, motivating discussion of overfitting on a small dataset). This makes it easy for follow-up work to position itself relative to meaningful comparisons.
+
+% -----------------------------------------------------------
+\subsection*{Q3. Key Weaknesses}
+% -----------------------------------------------------------
+
+\textbf{Class imbalance is acknowledged but not addressed experimentally.} The dataset contains roughly 995 positive examples out of 10,637 (approximately 9.3\%), yet the experimental section makes no attempt to handle this severe imbalance — no oversampling, undersampling, or class-weighted loss is applied. The results are reported only in terms of the positive-class F1, precision, and recall, without discussing how the threshold is chosen or how sensitive results are to it. Given that this imbalance is likely to be one of the main practical challenges for downstream users of the dataset, the omission is a significant gap.
+
+\textbf{Insufficient justification for the binary label threshold.} The paper collapses the 5-point composite label (0–4) into a binary signal by treating labels 0–1 as negative and 2–4 as positive. This threshold is chosen without justification. Labels 0 (both annotators say no PCL) and 4 (both say clear PCL) are the only truly clean cases; grouping label 2 (both borderline) with label 4 (both clearly positive) inflates the training signal for ambiguous examples. The authors do not include an ablation comparing different threshold choices, leaving it unclear how sensitive results are to this decision.
+
+\textbf{BERT-large underperformance is not explained with evidence.} The paper notes, correctly, that BERT-large performs worse than BERT-base and BiLSTM on Task 1, and attributes this to overfitting. However, no learning curves, training/validation loss plots, or any quantitative evidence for overfitting are provided. Without this, the explanation remains speculative. It is equally plausible that the large model simply requires different hyperparameters (e.g.\ a lower learning rate or more warmup steps), and the authors do not explore this.
+
+% ============================================================
+\section{Exercise 2: Exploratory Data Analysis}
+% ============================================================
+
+The following two EDA techniques are drawn directly from the appendix's NLP EDA workflow. Together they address all three of the appendix's stated reasons why EDA is critical: detecting class imbalance, determining an appropriate \texttt{max\_length}, and assessing whether the task can be solved by simple keyword patterns.
+
+% -----------------------------------------------------------
+\subsection*{Technique 1: Class Distribution and Token Length Distribution}
+\textit{(Appendix: Basic Statistical Profiling)}
+% -----------------------------------------------------------
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{figures/technique1_class_dist_token_length.png}
+    \caption{Left: class distribution of the training split. Right: overlapping density-normalised histograms of whitespace-tokenised text lengths for each class, with dashed vertical lines at each class mean.}
+    \label{fig:technique1}
+\end{figure}
+
+\textbf{Analysis.}
+Figure~\ref{fig:technique1} reveals two structural properties of the training data. First, the dataset is severely class-imbalanced: 7,581 examples (90.5\%) carry the No~PCL label (0) and only 794 (9.5\%) carry the PCL label (1), a ratio of approximately 9.55:1. Second, PCL examples are marginally longer than non-PCL examples on average (mean 53.5 vs.\ 48.2 whitespace tokens; median 47 vs.\ 42; 95th percentile 114 vs.\ 101 tokens), though the distributions overlap substantially.
+
+\textbf{Impact Statement.}
+The severe class imbalance means that a model trained with a standard cross-entropy loss and no correction will converge towards predicting the majority class, achieving $\sim$90\% accuracy while failing almost entirely on PCL examples — precisely the behaviour that makes F1 on the positive class the appropriate metric rather than accuracy. This motivates applying a \textbf{class-weighted loss} (weighting the PCL class by the inverse frequency ratio, $\approx$9.55) or oversampling minority examples during training. The token-length distribution, with a 95th percentile of 114 tokens, informs the choice of \textbf{\texttt{max\_length} = 128} for the transformer tokeniser: this covers the vast majority of both classes without wasting memory on excessive padding.
+
+% -----------------------------------------------------------
+\subsection*{Technique 2: N-gram Analysis --- Top Bigrams by Class}
+\textit{(Appendix: Lexical Analysis)}
+% -----------------------------------------------------------
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{figures/technique2_ngram_analysis.png}
+    \caption{Top 15 most frequent bigrams (stop words removed) in PCL examples (left) and No~PCL examples (right) of the training split.}
+    \label{fig:technique2}
+\end{figure}
+
+\textbf{Analysis.}
+Figure~\ref{fig:technique2} compares the most frequent bigrams within each class after filtering English stop words. While both classes share \textit{poor families} as their top bigram, their subsequent distributions differ qualitatively. The PCL class is dominated by \textbf{relational, needs-oriented phrases}: \textit{those need}, \textit{people need}, \textit{homeless people}, \textit{children poor}, \textit{help those} --- language that positions the vulnerable group as passive recipients of concern or charity. The No~PCL class, by contrast, skews toward \textbf{neutral, factual, and geographic constructions}: \textit{illegal immigrants}, \textit{per cent}, \textit{united states}, \textit{last year}, \textit{new york}, \textit{sri lanka} --- consistent with straightforward news reporting about these communities without condescending framing.
+
+\textbf{Impact Statement.}
+This analysis confirms that the task is \textit{not} trivially solvable by topic keywords alone: both classes discuss the same vulnerable groups using many of the same content words. The distinction lies in the \textbf{framing and stance} of the language --- condescending texts adopt a ``helper'' perspective, while neutral texts report facts. This rules out simple bag-of-words models as a viable approach and directly motivates using a \textbf{contextual language model} (such as RoBERTa) that can capture sentence-level framing and syntactic relationships rather than word co-occurrence counts. It also suggests that hand-crafted features based on topic alone (e.g.\ presence of the word \textit{homeless}) would be unreliable, since such words appear frequently in both classes.
+
+% ============================================================
+\section{Exercise 3: Proposed Approach}
+% ============================================================
+
+% -----------------------------------------------------------
+\subsection*{Proposed Approach}
+% -----------------------------------------------------------
+
+The proposed model is \textbf{DeBERTa-v3-base} fine-tuned for binary sequence classification, trained with \textbf{class-weighted cross-entropy loss} on the full training set, and evaluated using a \textbf{decision threshold optimised on the dev set}.
+
+\subsubsection*{Architecture}
+
+The backbone is \texttt{microsoft/deberta-v3-base} (HuggingFace Transformers), a 183M-parameter encoder pre-trained using Replaced Token Detection. DeBERTa-v3 uses a \textit{disentangled attention mechanism} that encodes word content and position as separate vectors and computes attention between all four combinations (content-to-content, content-to-position, position-to-content, position-to-content), allowing it to model the interaction between \textit{what} a token is and \textit{where} it appears more precisely than RoBERTa's fused content+position embeddings. A standard two-class linear head is applied to the \texttt{[CLS} representation.
+
+\subsubsection*{Training Methodology}
+
+Four key deviations from the baseline are made, each justified by the EDA findings:
+
+\begin{enumerate}
+    \item \textbf{Class-weighted loss.} The EDA revealed a 9.55:1 imbalance. Rather than discarding 85\% of negative examples through downsampling (as the baseline does), the full training set of 8,375 examples is used with a weighted cross-entropy loss: the minority (PCL) class is upweighted by a factor of $n_{\text{neg}} / n_{\text{pos}} \approx 9.55$, so the model attends equally to errors on both classes.
+
+    \item \textbf{More training epochs.} The baseline trains for only 1 epoch ($\approx$524 gradient steps at batch size 16). Fine-tuning a transformer typically requires 3--5 epochs to converge. The model is trained for \textbf{4 epochs} with the best checkpoint (by dev F1 of the positive class) saved.
+
+    \item \textbf{Learning-rate schedule with warmup.} A linear warmup over 10\% of total training steps followed by linear decay is applied. This prevents large gradient updates in the early steps, which can destabilise DeBERTa's disentangled attention layers. The baseline uses no scheduler.
+
+    \item \textbf{Decision threshold optimisation.} A fixed threshold of 0.5 is suboptimal for heavily imbalanced binary classification. After training, the threshold $\tau$ is swept over $\{0.05, 0.10, \ldots, 0.95\}$ on the dev set and the value maximising positive-class F1 is selected. This directly optimises the evaluation metric.
+\end{enumerate}
+
+The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{ll}
+        \toprule
+        \textbf{Hyperparameter} & \textbf{Value} \\
+        \midrule
+        Backbone           & \texttt{microsoft/deberta-v3-base} \\
+        Max sequence length & 128 \\
+        Loss               & CrossEntropyLoss, weight $= [1.0,\; 9.55]$ \\
+        Training epochs    & 4 \\
+        Batch size         & 16 \\
+        Learning rate      & $2 \times 10^{-5}$ \\
+        Warmup             & 10\% of total steps (linear) \\
+        LR schedule        & Linear decay after warmup \\
+        Optimiser          & AdamW, weight\_decay $= 0.01$ \\
+        Training examples  & 8,375 (full set, no downsampling) \\
+        \bottomrule
+    \end{tabular}
+    \caption{Hyperparameter configuration for the proposed DeBERTa-v3-base model.}
+    \label{tab:hyperparams}
+\end{table}
+
+% -----------------------------------------------------------
+\subsection*{Rationale and Expected Outcome}
+% -----------------------------------------------------------
+
+\textbf{Why DeBERTa-v3-base over RoBERTa-base?} DeBERTa-v3 consistently outperforms RoBERTa-base on NLP benchmarks (SuperGLUE, GLUE, SQuAD). More importantly, the disentangled attention mechanism is particularly well-suited to this task: the EDA n-gram analysis showed that PCL is characterised by \textit{framing} and \textit{relational stance} (e.g.\ \textit{those need}, \textit{help those}) rather than topic keywords. Capturing how words interact with their syntactic position in a sentence --- not just which words co-occur --- is precisely what disentangled attention is designed to do.
+
+\textbf{Why class-weighted loss over downsampling?} Downsampling the negatives to a 2:1 ratio, as the baseline does, retains only $2 \times 794 = 1{,}588$ negative examples from the available 7,581. Class-weighted loss uses all 8,375 examples: the model sees 4.8$\times$ more negative examples per epoch, learning a richer representation of what non-PCL text looks like. This reduces false positives without sacrificing recall, which is critical for optimising F1.
+
+\textbf{Why threshold optimisation?} For a 9.55:1 imbalance and a model trained with pos\_weight $= 9.55$, the model's output probabilities are calibrated towards the minority class. A fixed threshold of 0.5 on these probabilities will therefore over-predict PCL relative to what maximises F1. Grid-searching the threshold on the dev set directly targets the evaluation criterion used by the shared task.
+
+\textbf{Expected outcome.} Each component addresses a specific failure mode of the baseline. Taken together, they are expected to produce a substantive improvement over the baseline F1 of 0.48. DeBERTa-v3-base typically improves 3--5 F1 points over RoBERTa-base on comparable classification tasks; class-weighted loss and threshold tuning on an imbalanced dataset typically contribute a further 2--4 F1 points. A combined dev F1 in the range 0.55--0.65 is the projected outcome.
+
+\end{document}
