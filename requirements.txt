@@ -5,3 +5,4 @@ sentencepiece
 protobuf
 tiktoken
 transformers[torch]
+matplotlib

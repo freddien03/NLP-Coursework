@@ -33,39 +33,23 @@
 \subsection*{Q1. Primary Contributions}
 % -----------------------------------------------------------
 
-The paper makes three main contributions.
-
-\textbf{A new annotated dataset.} The central contribution is the \textit{Don't Patronize Me!} (DPM) dataset: 10,637 paragraphs drawn from the News on Web (NoW) corpus, spanning 20 English-speaking countries and 10 keywords associated with vulnerable communities (e.g.\ \textit{refugee}, \textit{homeless}, \textit{women}). Each paragraph is annotated for the presence of Patronising and Condescending Language (PCL) towards vulnerable groups. Prior to this work, no large-scale dataset existed specifically targeting PCL in media discourse; related corpora (e.g.\ the Talkdown corpus of Wang and Potts, 2019) focused on direct social-media interactions rather than journalistic language.
-
-\textbf{A taxonomy of PCL categories.} The authors introduce a two-level taxonomy of seven fine-grained PCL categories grouped under three higher-level types: \textit{The Saviour} (Unbalanced power relations, Shallow solution), \textit{The Expert} (Presupposition, Authority voice), and \textit{The Poet} (Metaphor, Compassion, The poorer, the merrier). This taxonomy is grounded in sociolinguistic theory and operationalised for NLP annotation, enabling fine-grained, span-level labelling that goes beyond binary PCL detection.
-
-\textbf{Baseline experiments.} The paper provides a systematic empirical evaluation across a range of models — from TF-IDF SVMs and Word2Vec-based BiLSTMs to fine-tuned BERT, RoBERTa, and DistilBERT — on both binary PCL detection (Task 1) and multi-label category classification (Task 2). These baselines establish a performance floor and surface which PCL categories are hardest for current NLP systems.
+The paper's main contribution is the \textit{Don't Patronize Me!} (DPM) dataset: 10,637 paragraphs from the News on Web corpus, annotated for Patronising and Condescending Language (PCL) towards vulnerable communities (e.g.\ refugees, homeless people, women). Before this, no large-scale dataset existed targeting PCL in news media specifically. Alongside the dataset, the authors introduce a taxonomy of seven fine-grained PCL categories (e.g.\ \textit{Unbalanced power relations}, \textit{Presupposition}, \textit{Compassion}) which enables span-level annotation beyond simple binary labels. Finally, the paper provides baseline results across a range of models — from TF-IDF SVMs to fine-tuned BERT and RoBERTa variants — establishing a performance floor for both binary detection and multi-label category classification.
 
 % -----------------------------------------------------------
 \subsection*{Q2. Technical Strengths}
 % -----------------------------------------------------------
 
-\textbf{Careful, multi-stage annotation design.} Rather than asking annotators for a simple binary label, the authors use a three-way per-annotator scale (0 = no PCL, 1 = borderline, 2 = clear PCL), then combine the two primary annotators' judgements into a 5-point composite score and route all total disagreements (0 vs.\ 2) to a third referee annotator. This design captures genuine annotation uncertainty and produces a more nuanced label distribution, avoiding the artefacts that arise when borderline cases are forced into hard categories. Reporting Inter-Annotator Agreement both with and without borderline cases (41\% vs.\ 61\% Cohen's Kappa) honestly conveys both the difficulty of the task and the achievable upper bound.
-
-\textbf{Thorough and transparent error analysis.} Tables 5 and 6 present concrete misclassified examples with gold and predicted labels. The analysis explains \textit{why} the model fails in each case — for instance, that flowery adjectives associated with the Compassion category can appear in non-condescending political writing, causing false positives, or that detecting Presupposition requires external world knowledge unavailable to the model. This level of qualitative insight goes beyond reporting aggregate metrics and makes the paper genuinely useful for researchers designing future models.
-
-\textbf{Breadth of baseline models.} By including models spanning the full complexity spectrum — random guessing, BoW SVM, word-embedding SVM, BiLSTM, and four BERT-family variants — the paper gives a clear picture of where complexity pays off and where it does not (notably, BERT-large underperforms BERT-base, motivating discussion of overfitting on a small dataset). This makes it easy for follow-up work to position itself relative to meaningful comparisons.
+The annotation design is a clear strength. Rather than asking for a simple binary label, annotators used a three-way scale (0/1/2), combined into a 5-point composite score, with disagreements referred to a third annotator. Reporting IAA both with and without borderline cases (41\% vs.\ 61\% Cohen's Kappa) is honest about task difficulty. The error analysis is also notably thorough — the paper explains \textit{why} models fail on specific examples (e.g.\ that detecting \textit{Presupposition} requires world knowledge the model lacks), rather than just reporting aggregate numbers. The breadth of baselines, covering everything from BoW SVMs to BERT-large, also gives a useful picture of where added model complexity helps.
 
 % -----------------------------------------------------------
 \subsection*{Q3. Key Weaknesses}
 % -----------------------------------------------------------
 
-\textbf{Class imbalance is acknowledged but not addressed experimentally.} The dataset contains roughly 995 positive examples out of 10,637 (approximately 9.3\%), yet the experimental section makes no attempt to handle this severe imbalance — no oversampling, undersampling, or class-weighted loss is applied. The results are reported only in terms of the positive-class F1, precision, and recall, without discussing how the threshold is chosen or how sensitive results are to it. Given that this imbalance is likely to be one of the main practical challenges for downstream users of the dataset, the omission is a significant gap.
-
-\textbf{Insufficient justification for the binary label threshold.} The paper collapses the 5-point composite label (0–4) into a binary signal by treating labels 0–1 as negative and 2–4 as positive. This threshold is chosen without justification. Labels 0 (both annotators say no PCL) and 4 (both say clear PCL) are the only truly clean cases; grouping label 2 (both borderline) with label 4 (both clearly positive) inflates the training signal for ambiguous examples. The authors do not include an ablation comparing different threshold choices, leaving it unclear how sensitive results are to this decision.
-
-\textbf{BERT-large underperformance is not explained with evidence.} The paper notes, correctly, that BERT-large performs worse than BERT-base and BiLSTM on Task 1, and attributes this to overfitting. However, no learning curves, training/validation loss plots, or any quantitative evidence for overfitting are provided. Without this, the explanation remains speculative. It is equally plausible that the large model simply requires different hyperparameters (e.g.\ a lower learning rate or more warmup steps), and the authors do not explore this.
+The most significant weakness is that class imbalance is acknowledged (roughly 9\% positive examples) but never addressed in the experiments — no oversampling, class-weighted loss, or threshold tuning is applied. This seems like a major gap given how directly it affects practical usability of the dataset. The binarisation threshold (treating composite scores 2--4 as positive) is also unjustified; grouping genuinely ambiguous cases (score 2) with clear positives (score 4) likely introduces noise, and no ablation is provided. Finally, the claim that BERT-large underperforms due to overfitting is asserted without supporting evidence such as learning curves or train/val loss plots, making it speculative.
 
 % ============================================================
 \section{Exercise 2: Exploratory Data Analysis}
 % ============================================================
-
-The following two EDA techniques are drawn directly from the appendix's NLP EDA workflow. Together they address all three of the appendix's stated reasons why EDA is critical: detecting class imbalance, determining an appropriate \texttt{max\_length}, and assessing whether the task can be solved by simple keyword patterns.
 
 % -----------------------------------------------------------
 \subsection*{Technique 1: Class Distribution and Token Length Distribution}
@@ -79,11 +63,9 @@ The following two EDA techniques are drawn directly from the appendix's NLP EDA 
     \label{fig:technique1}
 \end{figure}
 
-\textbf{Analysis.}
-Figure~\ref{fig:technique1} reveals two structural properties of the training data. First, the dataset is severely class-imbalanced: 7,581 examples (90.5\%) carry the No~PCL label (0) and only 794 (9.5\%) carry the PCL label (1), a ratio of approximately 9.55:1. Second, PCL examples are marginally longer than non-PCL examples on average (mean 53.5 vs.\ 48.2 whitespace tokens; median 47 vs.\ 42; 95th percentile 114 vs.\ 101 tokens), though the distributions overlap substantially.
+Figure~\ref{fig:technique1} reveals two structural properties of the training data. The dataset is severely class-imbalanced: 7,581 examples (90.5\%) carry the No~PCL label and only 794 (9.5\%) carry the PCL label, a ratio of roughly 9.55:1. PCL examples are also marginally longer on average (mean 53.5 vs.\ 48.2 whitespace tokens; 95th percentile 114 vs.\ 101 tokens), though the distributions overlap substantially.
 
-\textbf{Impact Statement.}
-The severe class imbalance means that a model trained with a standard cross-entropy loss and no correction will converge towards predicting the majority class, achieving $\sim$90\% accuracy while failing almost entirely on PCL examples — precisely the behaviour that makes F1 on the positive class the appropriate metric rather than accuracy. This motivates applying a \textbf{class-weighted loss} (weighting the PCL class by the inverse frequency ratio, $\approx$9.55) or oversampling minority examples during training. The token-length distribution, with a 95th percentile of 114 tokens, informs the choice of \textbf{\texttt{max\_length} = 128} for the transformer tokeniser: this covers the vast majority of both classes without wasting memory on excessive padding.
+The imbalance is the more consequential finding. A model trained with standard cross-entropy and no correction will tend to predict the majority class, reaching $\sim$90\% accuracy while failing on almost all PCL examples — which is why F1 on the positive class is a more appropriate metric than accuracy. This motivates using a class-weighted or focal loss to push the model to take the minority class seriously. The length distribution, with a 95th percentile of 114 tokens, supports setting \texttt{max\_length = 128} for the tokeniser, which covers almost all examples without excessive padding overhead.
 
 % -----------------------------------------------------------
 \subsection*{Technique 2: N-gram Analysis --- Top Bigrams by Class}
@@ -97,11 +79,9 @@ The severe class imbalance means that a model trained with a standard cross-entr
     \label{fig:technique2}
 \end{figure}
 
-\textbf{Analysis.}
-Figure~\ref{fig:technique2} compares the most frequent bigrams within each class after filtering English stop words. While both classes share \textit{poor families} as their top bigram, their subsequent distributions differ qualitatively. The PCL class is dominated by \textbf{relational, needs-oriented phrases}: \textit{those need}, \textit{people need}, \textit{homeless people}, \textit{children poor}, \textit{help those} --- language that positions the vulnerable group as passive recipients of concern or charity. The No~PCL class, by contrast, skews toward \textbf{neutral, factual, and geographic constructions}: \textit{illegal immigrants}, \textit{per cent}, \textit{united states}, \textit{last year}, \textit{new york}, \textit{sri lanka} --- consistent with straightforward news reporting about these communities without condescending framing.
+Figure~\ref{fig:technique2} compares the most frequent bigrams in each class after filtering stop words. While both classes share \textit{poor families} as their top bigram, the subsequent distributions differ noticeably. PCL examples are dominated by relational, needs-oriented phrases — \textit{those need}, \textit{people need}, \textit{help those} — that position the vulnerable group as passive recipients of concern. No~PCL examples skew toward neutral, factual language: geographic references (\textit{united states}, \textit{new york}, \textit{sri lanka}), statistics (\textit{per cent}), and descriptive labels (\textit{illegal immigrants}, \textit{last year}).
 
-\textbf{Impact Statement.}
-This analysis confirms that the task is \textit{not} trivially solvable by topic keywords alone: both classes discuss the same vulnerable groups using many of the same content words. The distinction lies in the \textbf{framing and stance} of the language --- condescending texts adopt a ``helper'' perspective, while neutral texts report facts. This rules out simple bag-of-words models as a viable approach and directly motivates using a \textbf{contextual language model} (such as RoBERTa) that can capture sentence-level framing and syntactic relationships rather than word co-occurrence counts. It also suggests that hand-crafted features based on topic alone (e.g.\ presence of the word \textit{homeless}) would be unreliable, since such words appear frequently in both classes.
+The key takeaway is that the two classes are \textit{not} separable by topic keywords alone — both discuss the same vulnerable communities using many of the same content words. The difference lies in framing and stance rather than subject matter, which rules out simple bag-of-words approaches and motivates using a contextual model like RoBERTa that can represent sentence-level structure. It also suggests that features based on topic alone (e.g.\ the presence of \textit{homeless}) would be unreliable, since such words appear frequently in both classes.
 
 % ============================================================
 \section{Exercise 3: Proposed Approach}
@@ -111,34 +91,34 @@ This analysis confirms that the task is \textit{not} trivially solvable by topic
 \subsection*{Proposed Approach}
 % -----------------------------------------------------------
 
-The proposed model is a \textbf{multi-task RoBERTa-base} with two classification heads --- a primary binary PCL head trained with \textbf{focal loss}, and an auxiliary 7-category head trained with \textbf{BCE loss} --- jointly optimised on the full training set, with a \textbf{decision threshold optimised on the dev set}.
+The proposed model is a multi-task RoBERTa-base with two classification heads: a primary binary PCL head trained with focal loss, and an auxiliary 7-category head trained with BCE loss, jointly optimised on the full training set, with a decision threshold tuned on the dev set.
 
 \subsubsection*{Architecture}
 
-The backbone is \texttt{roberta-base} (HuggingFace Transformers), a 125M-parameter encoder pre-trained with masked language modelling on a large English corpus using dynamic masking and no next-sentence prediction objective. RoBERTa-base produces a 768-dimensional \texttt{[CLS]} representation well-suited to sentence-level classification tasks.
+The backbone is \texttt{roberta-base} (HuggingFace Transformers), a 125M-parameter encoder pre-trained with masked language modelling using dynamic masking and no next-sentence prediction objective. It produces a 768-dimensional \texttt{[CLS]} representation well-suited to sentence-level classification.
 
-The \texttt{[CLS]} representation is passed through a dropout layer ($p = 0.1$) and fed into \textbf{two parallel linear heads}:
+This representation is passed through a dropout layer ($p = 0.1$) into two parallel linear heads:
 \begin{itemize}
-    \item \textbf{Binary head} (768 $\to$ 2): predicts PCL vs.\ No-PCL. This is the primary classification head used at inference time.
-    \item \textbf{Category head} (768 $\to$ 7): predicts which of the 7 fine-grained PCL categories are present (multi-label). This head is used \textit{only during training} as an auxiliary regulariser.
+    \item Binary head (768 $\to$ 2): predicts PCL vs.\ No-PCL. This is the only head used at inference time.
+    \item Category head (768 $\to$ 7): predicts which of the 7 fine-grained PCL categories are present (multi-label). This head is used only during training as an auxiliary regulariser.
 \end{itemize}
 
 The combined loss is: $\mathcal{L} = \mathcal{L}_{\text{focal}} + \lambda \cdot \mathcal{L}_{\text{BCE}}$, where $\lambda = 0.5$.
 
 \subsubsection*{Training Methodology}
 
-Five key deviations from the baseline are made, each justified by the EDA findings:
+Five deviations from the baseline are made, each motivated by the EDA:
 
 \begin{enumerate}
-    \item \textbf{Focal loss (replacing class-weighted cross-entropy).} The EDA revealed a 9.55:1 class imbalance. Rather than applying static class weights, focal loss \cite{lin2017focal} dynamically down-weights well-classified examples: $\text{FL}(p_t) = -\alpha_t (1 - p_t)^\gamma \log(p_t)$, with $\gamma = 2.0$ and $\alpha = [1.0, 9.55]$. This focuses the model's learning on \textit{hard} examples --- ambiguous cases near the decision boundary --- rather than the easy-to-classify majority.
+    \item \textbf{Focal loss.} The EDA revealed a 9.55:1 class imbalance. Rather than static class weights, focal loss \cite{lin2017focal} dynamically down-weights well-classified examples: $\text{FL}(p_t) = -\alpha_t (1 - p_t)^\gamma \log(p_t)$, with $\gamma = 2.0$ and $\alpha = [1.0, 9.55]$. This concentrates learning on hard, ambiguous examples near the decision boundary rather than the easy majority.
 
-    \item \textbf{Multi-task learning with auxiliary category prediction.} The dataset provides 7 fine-grained PCL category labels (Unbalanced power relations, Shallow solution, Presupposition, Authority voice, Metaphor, Compassion, The poorer the merrier) for every example. By training the shared encoder to simultaneously predict these categories via a BCE loss head, the model is forced to learn richer, more structured representations of PCL. At inference time, only the binary head is used; the category head serves purely as a training-time regulariser that improves generalisation.
+    \item \textbf{Multi-task learning with auxiliary category prediction.} The dataset provides 7 fine-grained PCL category labels for every example. Training the shared encoder to simultaneously predict these via a BCE head encourages richer, more structured PCL representations. At inference, only the binary head is used; the category head acts purely as a training-time regulariser.
 
-    \item \textbf{More training epochs.} The baseline trains for only 1 epoch. The model is trained for \textbf{5 epochs} with the best checkpoint (by dev F1 of the positive class) saved.
+    \item \textbf{More training epochs.} The baseline trains for 1 epoch. Here the model is trained for 5 epochs, saving the best checkpoint by dev F1.
 
-    \item \textbf{Learning-rate schedule with warmup.} A linear warmup over 10\% of total training steps followed by linear decay is applied. This stabilises early training by preventing large gradient updates before the model has developed useful representations. The baseline uses no scheduler.
+    \item \textbf{Learning-rate schedule with warmup.} A linear warmup over 10\% of training steps followed by linear decay stabilises early training. The baseline uses no scheduler.
 
-    \item \textbf{Decision threshold optimisation.} After training, the threshold $\tau$ is swept over $\{0.05, 0.10, \ldots, 0.95\}$ on the dev set and the value maximising positive-class F1 is selected. This directly optimises the evaluation metric.
+    \item \textbf{Decision threshold optimisation.} After training, $\tau$ is swept over $\{0.05, 0.10, \ldots, 0.95\}$ on the dev set and the value maximising positive-class F1 is selected, directly targeting the evaluation metric.
 \end{enumerate}
 
 The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
@@ -171,15 +151,15 @@ The full hyperparameter configuration is listed in Table~\ref{tab:hyperparams}.
 \subsection*{Rationale and Expected Outcome}
 % -----------------------------------------------------------
 
-\textbf{Why RoBERTa-base?} RoBERTa-base is a well-established encoder for sentence classification tasks. It uses the same hidden size (768) and architecture as the BERT baseline family, providing a strong and well-understood foundation. It was pre-trained on a substantially larger corpus than BERT with improved training methodology (dynamic masking, no NSP objective, larger batches), giving it better general language representations while remaining computationally tractable for fine-tuning on a dataset of this size.
+RoBERTa-base was chosen as the backbone because it is a well-understood encoder for sentence classification and a natural extension of the BERT baselines in the paper. It was pre-trained on a larger corpus than BERT with improved methodology (dynamic masking, no NSP, larger batches), giving better general representations while still being tractable to fine-tune on a dataset of this size.
 
-\textbf{Why focal loss over class-weighted cross-entropy?} Static class weights treat all minority-class examples equally, regardless of difficulty. Focal loss introduces a \textit{dynamic} modulating factor $(1 - p_t)^\gamma$ that automatically reduces the contribution of easy examples and focuses training on hard, ambiguous cases near the decision boundary. This is particularly relevant for PCL detection, where the boundary between condescending framing and neutral reporting is often subtle.
+Focal loss is preferred over static class weights because it is dynamic: the modulating factor $(1 - p_t)^\gamma$ automatically reduces the contribution of easy examples and focuses training on hard cases near the boundary. For PCL detection, where the distinction between condescending framing and neutral reporting is often subtle, this seems particularly well-suited.
 
-\textbf{Why multi-task learning with category prediction?} The 7 fine-grained PCL categories capture distinct linguistic strategies (e.g.\ ``Unbalanced power relations'' vs.\ ``Shallow solution'' vs.\ ``Metaphor''). Training the shared encoder to recognise these categories forces it to learn structured, category-aware representations rather than collapsing PCL into a single undifferentiated class. This acts as an inductive bias: the encoder must disentangle the \textit{mechanisms} of condescension, which improves generalisation on the binary task. The auxiliary head is discarded at inference, adding zero computational cost.
+The motivation for multi-task learning is that the 7 PCL categories capture distinct linguistic mechanisms — e.g.\ \textit{Unbalanced power relations} vs.\ \textit{Shallow solution} vs.\ \textit{Metaphor}. Training the encoder to distinguish these forces it to learn richer representations than a single-task model would, acting as an inductive bias toward understanding \textit{how} condescension works rather than just that it is present. The auxiliary head is discarded at inference, so this adds no computational cost.
 
-\textbf{Why threshold optimisation?} For a model trained with focal loss and class-specific $\alpha$ weights, the output probability distribution is not calibrated for a fixed 0.5 threshold. Grid-searching $\tau$ on the dev set directly targets the evaluation criterion used by the shared task.
+Threshold optimisation is included because focal loss with class-specific $\alpha$ weights shifts the output probability distribution away from a well-calibrated 0.5 threshold, so grid-searching on the dev set is a simple way to close that gap.
 
-\textbf{Expected outcome.} Each component addresses a specific failure mode of the baseline. Focal loss and multi-task learning improve hard-example handling and representation quality respectively, while threshold optimisation directly targets the evaluation metric. A combined dev F1 in the range 0.55--0.65 is the projected outcome, compared to the baseline F1 of 0.48.
+Together, each component addresses a specific weakness of the baseline, and a dev F1 in the range 0.55--0.65 is expected, compared to the baseline's 0.48.
 
 % ============================================================
 \section{Exercise 5: Predictions and Error Analysis}
