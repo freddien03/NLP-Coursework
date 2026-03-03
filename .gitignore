@@ -223,5 +223,8 @@ writeup/*.blg
 *.safetensors
 figures/
 
+# Model checkpoints (weights too large for GitHub; code is in BestModel/)
+checkpoints/
+
 # MacOS
 .DS_Store

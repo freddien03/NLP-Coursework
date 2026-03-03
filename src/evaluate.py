@@ -1,11 +1,11 @@
 """Error analysis and per-keyword evaluation (Exercise 5.2).
 
-Loads best model and baseline predictions on the dev set and analyses
+Loads best model, ablation, and baseline predictions on the dev set and analyses
 failure cases across four scenarios:
   - Both correct
   - Both incorrect
   - Only best model correct
-  - Only baseline correct
+  - Only other model correct
 
 Usage:
     python src/evaluate.py
@@ -40,47 +40,59 @@ def read_predictions(path: Path) -> list[int]:
     return [int(line.strip()) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def _four_buckets(records, gold, preds_a, preds_b):
+    """Return (both_correct, both_wrong, only_a, only_b) index lists."""
+    both_correct = []
+    both_wrong   = []
+    only_a       = []
+    only_b       = []
+    for i, (rec, pa, pb, g) in enumerate(zip(records, preds_a, preds_b, gold)):
+        a_ok = (pa == g)
+        b_ok = (pb == g)
+        if a_ok and b_ok:
+            both_correct.append(i)
+        elif not a_ok and not b_ok:
+            both_wrong.append(i)
+        elif a_ok and not b_ok:
+            only_a.append(i)
+        else:
+            only_b.append(i)
+    return both_correct, both_wrong, only_a, only_b
+
+
 def error_analysis(
     records: list[dict],
     baseline_preds: list[int],
+    ablation_preds: list[int],
     best_preds: list[int],
 ) -> None:
-    """Print 4-bucket error analysis and save confusion matrix figure."""
-    assert len(records) == len(baseline_preds) == len(best_preds), (
-        f"Length mismatch: records={len(records)}, baseline={len(baseline_preds)}, best={len(best_preds)}"
+    """Print 4-bucket error analysis for two comparisons and save confusion matrix figure."""
+    assert len(records) == len(baseline_preds) == len(ablation_preds) == len(best_preds), (
+        f"Length mismatch: records={len(records)}, baseline={len(baseline_preds)}, "
+        f"ablation={len(ablation_preds)}, best={len(best_preds)}"
     )
 
     fine_grained = load_fine_grained_labels(DEV_CSV)
     gold = [r["label"] for r in records]
 
-    # 4 buckets
-    both_correct    = []
-    both_wrong      = []
-    only_best       = []   # best correct, baseline wrong
-    only_baseline   = []   # baseline correct, best wrong
-
-    for i, (rec, bp, bsp, g) in enumerate(zip(records, best_preds, baseline_preds, gold)):
-        best_ok     = (bp  == g)
-        base_ok     = (bsp == g)
-        if best_ok and base_ok:
-            both_correct.append(i)
-        elif not best_ok and not base_ok:
-            both_wrong.append(i)
-        elif best_ok and not base_ok:
-            only_best.append(i)
-        else:
-            only_baseline.append(i)
+    # --- Summary metrics table ---
+    print("=" * 60)
+    print("Model Summary — Dev Set Metrics")
+    print("=" * 60)
+    print(f"{'Model':<30} {'F1':>6} {'P':>6} {'R':>6} {'Threshold':>10}")
+    print("-" * 60)
+    for name, preds, tau in [
+        ("Baseline (1-epoch CE)", baseline_preds, 0.50),
+        ("Ablation (no cat. head)", ablation_preds, 0.65),
+        ("Best model (multi-task)", best_preds, 0.50),
+    ]:
+        f1  = f1_score(gold, preds, pos_label=1, zero_division=0)
+        p   = precision_score(gold, preds, pos_label=1, zero_division=0)
+        r   = recall_score(gold, preds, pos_label=1, zero_division=0)
+        print(f"  {name:<28} {f1:6.4f} {p:6.4f} {r:6.4f} {tau:10.2f}")
+    print()
 
     total = len(records)
-    print("=" * 60)
-    print("Error Analysis — 4-Bucket Summary")
-    print("=" * 60)
-    print(f"Total dev examples:         {total}")
-    print(f"Both correct:               {len(both_correct):4d}  ({100*len(both_correct)/total:.1f}%)")
-    print(f"Both wrong:                 {len(both_wrong):4d}  ({100*len(both_wrong)/total:.1f}%)")
-    print(f"Only best model correct:    {len(only_best):4d}  ({100*len(only_best)/total:.1f}%)")
-    print(f"Only baseline correct:      {len(only_baseline):4d}  ({100*len(only_baseline)/total:.1f}%)")
-    print()
 
     def _active_cats(par_id: str) -> str:
         vec = fine_grained.get(par_id, [0] * 7)
@@ -98,11 +110,32 @@ def error_analysis(
             print(f"       \"{snippet}\"")
         print()
 
-    _show_examples(only_best,     "Only Best Correct (improvements over baseline)")
-    _show_examples(only_baseline, "Only Baseline Correct (regressions)")
-    _show_examples(both_wrong,    "Both Wrong (hard cases)")
+    def _print_bucket_table(label_a, label_b, both_correct, both_wrong, only_a, only_b):
+        print("=" * 60)
+        print(f"4-Bucket Comparison: {label_a} vs {label_b}")
+        print("=" * 60)
+        print(f"Total dev examples: {total}")
+        print(f"Both correct:              {len(both_correct):4d}  ({100*len(both_correct)/total:.1f}%)")
+        print(f"Both wrong:                {len(both_wrong):4d}  ({100*len(both_wrong)/total:.1f}%)")
+        print(f"Only {label_a} correct:  {len(only_a):4d}  ({100*len(only_a)/total:.1f}%)")
+        print(f"Only {label_b} correct: {len(only_b):4d}  ({100*len(only_b)/total:.1f}%)")
+        print()
 
-    # --- Confusion matrices ---
+    # --- Best vs Baseline ---
+    bc_bl, bw_bl, only_best_bl, only_base = _four_buckets(records, gold, best_preds, baseline_preds)
+    _print_bucket_table("best", "baseline", bc_bl, bw_bl, only_best_bl, only_base)
+    _show_examples(only_best_bl, "Only Best Correct (improvements over baseline)")
+    _show_examples(only_base,    "Only Baseline Correct (regressions vs baseline)")
+    _show_examples(bw_bl,        "Both Wrong — Best vs Baseline (hard cases)")
+
+    # --- Best vs Ablation ---
+    bc_ab, bw_ab, only_best_ab, only_abl = _four_buckets(records, gold, best_preds, ablation_preds)
+    _print_bucket_table("best", "ablation", bc_ab, bw_ab, only_best_ab, only_abl)
+    _show_examples(only_best_ab, "Only Best Correct (improvements over ablation)")
+    _show_examples(only_abl,     "Only Ablation Correct (regressions vs ablation)")
+    _show_examples(bw_ab,        "Both Wrong — Best vs Ablation (hard cases)")
+
+    # --- Confusion matrices (3 panels) ---
     figures_dir = REPO_ROOT / "writeup" / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +143,7 @@ def error_analysis(
     for ax, preds, title in zip(
         axes,
         [baseline_preds, best_preds],
-        ["Baseline (RoBERTa, 1-epoch CE)", "Best Model (RoBERTa multi-task, focal)"],
+        ["Baseline (1-epoch CE)", "Best Model (multi-task)"],
     ):
         cm = confusion_matrix(gold, preds)
         disp = ConfusionMatrixDisplay(cm, display_labels=["No PCL", "PCL"])
@@ -186,7 +219,8 @@ if __name__ == "__main__":
     dev_records = load_dev()
 
     baseline_preds = read_predictions(REPO_ROOT / "predictions" / "baseline_dev.txt")
+    ablation_preds = read_predictions(REPO_ROOT / "predictions" / "ablation_no_category_dev.txt")
     best_preds     = read_predictions(REPO_ROOT / "dev.txt")
 
-    error_analysis(dev_records, baseline_preds, best_preds)
+    error_analysis(dev_records, baseline_preds, ablation_preds, best_preds)
     per_keyword_analysis(dev_records, best_preds)
