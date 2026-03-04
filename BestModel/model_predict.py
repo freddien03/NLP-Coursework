@@ -1,16 +1,3 @@
-"""Generate dev.txt and test.txt prediction files (Exercise 5.1).
-
-Loads the best multi-task DeBERTa checkpoint, sweeps the decision threshold on
-the dev set to maximise positive-class F1, then writes predictions for both
-dev and test splits.
-
-Output format: one prediction per line, 0 or 1.
-Files are written to the repository root as required by the spec.
-
-Usage:
-    python BestModel/model_predict.py
-"""
-
 import sys
 from pathlib import Path
 import json
@@ -73,7 +60,6 @@ def _get_probs(
     tokenizer,
     device: torch.device,
 ) -> np.ndarray:
-    """Return softmax P(label=1) for each record using the binary head."""
     texts = [r["text"] for r in records]
     dataset = InferenceDataset(texts, tokenizer)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE)
@@ -97,7 +83,6 @@ def find_best_threshold(
     tokenizer,
     device: torch.device,
 ) -> tuple[float, float, np.ndarray]:
-    """Sweep threshold on dev set; return (best_tau, best_f1, probs)."""
     probs = _get_probs(dev_records, model, tokenizer, device)
     labels = [r["label"] for r in dev_records]
 
@@ -112,7 +97,6 @@ def find_best_threshold(
 
 
 def predict(records: list[dict], tau: float | None = None) -> list[int]:
-    """Load checkpoint, apply threshold, return binary predictions."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tokenizer = AutoTokenizer.from_pretrained(str(CHECKPOINT_DIR))
