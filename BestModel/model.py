@@ -1,29 +1,7 @@
-r"""Best model -- Multi-task RoBERTa-base with focal loss for PCL detection.
-
-Architecture:
-  RoBERTa-base encoder (shared)
-        |
-    [CLS] token + Dropout(0.1)
-      /              \
-  Binary Head       Category Head
-  (768 -> 2)        (768 -> 7)
-  Focal Loss        BCE Loss
-      \              /
-   Combined: L = L_focal + lambda * L_bce
-
-The binary head detects PCL (0/1). The category head predicts which of the
-7 fine-grained PCL categories are present (multi-label). At inference only
-the binary head is used; the category head acts as a training-time regulariser.
-
-Usage:
-    python BestModel/model.py
-"""
-
 import json
 import sys
 from pathlib import Path
 
-# Allow importing from src/
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
@@ -71,13 +49,6 @@ CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 
 class FocalLoss(nn.Module):
-    """Focal loss for binary/multi-class classification.
-
-    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
-
-    Focuses training on hard, misclassified examples by down-weighting
-    well-classified ones.
-    """
     def __init__(self, gamma: float = 2.0, alpha: list[float] | None = None):
         super().__init__()
         self.gamma = gamma
@@ -103,11 +74,6 @@ class FocalLoss(nn.Module):
 # ---------------------------------------------------------------------------
 
 class MultiTaskModel(nn.Module):
-    """Transformer encoder with two classification heads.
-
-    - binary_head: 2-class PCL detection
-    - category_head: 7-class multi-label PCL category prediction
-    """
     def __init__(self, model_name: str = MODEL_NAME, num_categories: int = NUM_CATEGORIES,
                  prior_prob: float = 0.0948):
         super().__init__()
@@ -116,9 +82,6 @@ class MultiTaskModel(nn.Module):
         self.dropout = nn.Dropout(0.1)
         self.binary_head = nn.Linear(hidden_size, 2)
         self.category_head = nn.Linear(hidden_size, num_categories)
-        # Initialise binary head bias to class prior so the model predicts ~π at
-        # the start of training rather than ~0.5. This prevents the large initial
-        # loss spike from the majority class from collapsing training (Lin et al. 2017).
         import math
         self.binary_head.bias.data[1] = math.log(prior_prob / (1 - prior_prob))
 
@@ -151,8 +114,6 @@ class MultiTaskModel(nn.Module):
 # ---------------------------------------------------------------------------
 
 class MultiTaskPCLDataset(TorchDataset):
-    """Dataset returning tokenized inputs + binary label + 7-element category labels."""
-
     def __init__(
         self,
         records: list[dict],
@@ -161,7 +122,6 @@ class MultiTaskPCLDataset(TorchDataset):
         max_length: int = MAX_LENGTH,
     ):
         self.labels = [r["label"] for r in records]
-        # Map par_id -> category vector; default to all-zeros for non-PCL
         self.category_labels = [
             fine_grained.get(r["par_id"], [0] * NUM_CATEGORIES)
             for r in records
@@ -223,8 +183,6 @@ class InferenceDataset(TorchDataset):
 # ---------------------------------------------------------------------------
 
 class MultiTaskTrainer(Trainer):
-    """Trainer that computes focal loss (binary) + BCE loss (category)."""
-
     def __init__(self, focal_loss: FocalLoss, aux_weight: float, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.focal_loss = focal_loss
@@ -249,7 +207,6 @@ class MultiTaskTrainer(Trainer):
         return (loss, outputs) if return_outputs else loss
 
     def save_model(self, output_dir=None, _internal_call=False):
-        """Save custom model via torch.save since it's not a PreTrainedModel."""
         if output_dir is None:
             output_dir = self.args.output_dir
         output_dir = Path(output_dir)
@@ -263,8 +220,6 @@ class MultiTaskTrainer(Trainer):
 
 def compute_metrics(eval_pred):
     predictions, label_ids = eval_pred
-    # predictions is a tuple: (binary_logits, category_logits)
-    # label_ids is a tuple: (binary_labels, category_labels)
     if isinstance(predictions, tuple):
         binary_logits = predictions[0]
     else:
@@ -365,7 +320,7 @@ def main():
         weight_decay=WEIGHT_DECAY,
         eval_strategy="epoch",
         save_strategy="epoch",
-        load_best_model_at_end=False,  # manual loading since custom model
+        load_best_model_at_end=False,
         metric_for_best_model="f1_pos",
         greater_is_better=True,
         save_total_limit=1,
