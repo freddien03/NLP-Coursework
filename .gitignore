@@ -217,12 +217,8 @@ writeup/*.synctex.gz
 writeup/*.bbl
 writeup/*.blg
 
-# NLP Coursework — data and model weights
-*.bin
-*.pt
-*.safetensors
 
-# Model checkpoints (weights too large for GitHub; code is in BestModel/)
+# Model checkpoints
 checkpoints/
 
 # MacOS
