@@ -1,0 +1,10 @@
+{
+  "model": "roberta-base",
+  "architecture": "multi-task (binary + 7-category)",
+  "loss": "focal(gamma=2.0) + 0.5*BCE",
+  "epochs": 5,
+  "batch_size": 16,
+  "lr": 2e-05,
+  "threshold": 0.25,
+  "dev_f1": 0.6180048661800487
+}

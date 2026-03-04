@@ -84,7 +84,7 @@ def error_analysis(
     for name, preds, tau in [
         ("Baseline (1-epoch CE)", baseline_preds, 0.50),
         ("Ablation (no cat. head)", ablation_preds, 0.65),
-        ("Best model (multi-task)", best_preds, 0.50),
+        ("Best model (multi-task)", best_preds, 0.25),
     ]:
         f1  = f1_score(gold, preds, pos_label=1, zero_division=0)
         p   = precision_score(gold, preds, pos_label=1, zero_division=0)

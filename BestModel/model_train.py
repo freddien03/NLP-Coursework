@@ -42,6 +42,7 @@ NUM_CATEGORIES = 7
 
 CHECKPOINT_DIR = REPO_ROOT / "checkpoints" / "roberta_best"
 CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+BEST_MODEL_DIR = REPO_ROOT / "BestModel"
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +384,14 @@ def main():
             "dev_f1": dev_f1,
         }, indent=2)
     )
+
+    # Copy best model into BestModel/
+    import shutil
+    for fname in ("model.pt", "tokenizer.json", "tokenizer_config.json", "threshold.json", "train_info.json"):
+        src = CHECKPOINT_DIR / fname
+        if src.exists():
+            shutil.copy2(src, BEST_MODEL_DIR / fname)
+    print(f"Saved best model to {BEST_MODEL_DIR}")
 
     # Write dev predictions
     dev_preds = (dev_probs >= tau).astype(int).tolist()

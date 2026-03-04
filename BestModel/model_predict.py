@@ -8,12 +8,16 @@ Output format: one prediction per line, 0 or 1.
 Files are written to the repository root as required by the spec.
 
 Usage:
-    python src/predict.py
+    python BestModel/model_predict.py
 """
 
 import sys
 from pathlib import Path
 import json
+
+REPO_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(REPO_ROOT / "BestModel"))
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import numpy as np
 import torch
@@ -22,13 +26,9 @@ from transformers import AutoTokenizer
 from sklearn.metrics import f1_score
 
 from data_utils import load_dev, load_test
+from model_train import MultiTaskModel
 
-REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT / "BestModel"))
-
-from model import MultiTaskModel
-
-CHECKPOINT_DIR = REPO_ROOT / "checkpoints" / "roberta_best"
+CHECKPOINT_DIR = REPO_ROOT / "BestModel"
 MAX_LENGTH = 128
 BATCH_SIZE = 32
 

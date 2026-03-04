@@ -166,7 +166,7 @@ Together, each component addresses a specific weakness of the baseline, and a de
 
 \subsubsection*{Part A: Error Analysis}
 
-The best model (multi-task RoBERTa-base, 5~epochs, focal loss + auxiliary category head, $\tau=0.5$; dev F1 = 0.6196) and the spec baseline (single-task RoBERTa-base, 1~epoch, standard cross-entropy, 2:1 negative downsampling, $\tau=0.5$; dev F1 = 0.5073) were compared on all 2,094 dev examples, with each assigned to one of four outcomes.
+The best model (multi-task RoBERTa-base, 5~epochs, focal loss + auxiliary category head, $\tau=0.25$; dev F1 = 0.6180) and the spec baseline (single-task RoBERTa-base, 1~epoch, standard cross-entropy, 2:1 negative downsampling, $\tau=0.5$; dev F1 = 0.5073) were compared on all 2,094 dev examples, with each assigned to one of four outcomes.
 
 \begin{table}[h]
     \centering
@@ -174,10 +174,10 @@ The best model (multi-task RoBERTa-base, 5~epochs, focal loss + auxiliary catego
         \toprule
         \textbf{Scenario} & \textbf{Count} & \textbf{\%} \\
         \midrule
-        Both correct            & 1783 & 85.1 \\
-        Both wrong              &  110 &  5.3 \\
-        Only best model correct &  160 &  7.6 \\
-        Only baseline correct   &   41 &  2.0 \\
+        Both correct            & 1784 & 85.2 \\
+        Both wrong              &  117 &  5.6 \\
+        Only best model correct &  153 &  7.3 \\
+        Only baseline correct   &   40 &  1.9 \\
         \midrule
         \textbf{Total}          & 2094 & 100.0 \\
         \bottomrule
@@ -193,17 +193,17 @@ The best model (multi-task RoBERTa-base, 5~epochs, focal loss + auxiliary catego
     \label{fig:confusion}
 \end{figure}
 
-The best model improves on the baseline in 160 cases while regressing on only 41, confirming that the F1 gain is genuine and broadly distributed rather than concentrated on a few examples.
+The best model improves on the baseline in 153 cases while regressing on only 40, confirming that the F1 gain is genuine and broadly distributed rather than concentrated on a few examples.
 
 The 160 cases where the best model succeeds but the baseline fails are dominated by examples annotated with \textit{Presupposition}, \textit{Compassion}, and \textit{Authority voice} — patterns the 1-epoch CE model misses entirely. For example, \textit{``Hollywood star Leo Di Caprio urges help for reuniting immigrant children with their families''} (gold=1, Unbalanced power relations) positions the community as passive objects of celebrity advocacy, a structural framing the multi-task encoder picks up on. Similarly, \textit{``Rather sad. Good set of pictures that tells a tale of survival, subsistence living, and hopeless nature of life…''} (gold=1, Presupposition + Metaphor + Compassion) frames poverty as immutable — an implicit presupposition that emerges from longer focal-loss training.
 
-The 41 regressions are mostly positive examples the best model under-predicts, such as \textit{``Our country is in need of serious change. We can continue to celebrate women's day, throw massive budgets at events…''} (Shallow solution), where the PCL takes the form of sarcastic dismissal rather than explicit condescension. The 110 \textit{both wrong} cases are uniformly false negatives, with \textit{Presupposition} heavily represented — e.g.\ \textit{``Many refugees don't want to be resettled anywhere, let alone in the US''} — where PCL is embedded in a clause-level assumption rather than surface-level language.
+The 40 regressions are mostly positive examples the best model under-predicts, such as \textit{``Our country is in need of serious change. We can continue to celebrate women's day, throw massive budgets at events…''} (Shallow solution), where the PCL takes the form of sarcastic dismissal rather than explicit condescension. The 117 \textit{both wrong} cases are uniformly false negatives, with \textit{Presupposition} heavily represented — e.g.\ \textit{``Many refugees don't want to be resettled anywhere, let alone in the US''} — where PCL is embedded in a clause-level assumption rather than surface-level language.
 
 % -----------------------------------------------------------
 \subsubsection*{Part B: Ablation Study}
 % -----------------------------------------------------------
 
-To isolate the contribution of the auxiliary category head, a single ablation was run using the same setup (5~epochs, focal loss, full training set) but with only the binary head. The optimal threshold shifts to $\tau=0.65$ for the ablation vs.\ $\tau=0.50$ for the full model, reflecting a more conservative output distribution without the category regulariser.
+To isolate the contribution of the auxiliary category head, a single ablation was run using the same setup (5~epochs, focal loss, full training set) but with only the binary head. The optimal threshold shifts to $\tau=0.65$ for the ablation vs.\ $\tau=0.25$ for the full model, reflecting a more conservative output distribution without the category regulariser.
 
 \begin{table}[h]
     \centering
@@ -213,7 +213,7 @@ To isolate the contribution of the auxiliary category head, a single ablation wa
         \midrule
         Baseline (1-epoch CE, 2:1 downsample)   & 0.5073 & 0.3983 & 0.6985 \\
         Ablation (5-epoch focal, no cat.\ head) & 0.6000 & 0.6954 & 0.5276 \\
-        Best model (5-epoch focal + cat.\ head) & 0.6196 & 0.6212 & 0.6181 \\
+        Best model (5-epoch focal + cat.\ head) & 0.6180 & 0.5991 & 0.6382 \\
         \bottomrule
     \end{tabular}
     \caption{Dev-set F1, precision, and recall for all three systems. The ablation isolates the effect of the auxiliary category head.}
@@ -226,10 +226,10 @@ To isolate the contribution of the auxiliary category head, a single ablation wa
         \toprule
         \textbf{Scenario} & \textbf{Count} & \textbf{\%} \\
         \midrule
-        Both correct             & 1917 & 91.5 \\
-        Both wrong               &  114 &  5.4 \\
-        Only best model correct  &   26 &  1.2 \\
-        Only ablation correct    &   37 &  1.8 \\
+        Both correct             & 1908 & 91.1 \\
+        Both wrong               &  111 &  5.3 \\
+        Only best model correct  &   29 &  1.4 \\
+        Only ablation correct    &   46 &  2.2 \\
         \midrule
         \textbf{Total}           & 2094 & 100.0 \\
         \bottomrule
@@ -238,10 +238,10 @@ To isolate the contribution of the auxiliary category head, a single ablation wa
     \label{tab:buckets_ablation}
 \end{table}
 
-The ablation already reaches F1 = 0.6000, showing that five epochs of focal-loss training accounts for most of the gain over the baseline (+0.0927 F1). The category head adds a further +0.0196, but the more interesting story is in how it changes the precision/recall trade-off rather than just the headline number.
+The ablation already reaches F1 = 0.6000, showing that five epochs of focal-loss training accounts for most of the gain over the baseline (+0.0927 F1). The category head adds a further +0.0180, but the more interesting story is in how it changes the precision/recall trade-off rather than just the headline number.
 
-Without the category head, the model is already very precise (P = 0.6954) but under-predicts (R = 0.5276): focal loss suppresses false positives effectively, but the encoder without the auxiliary signal is reluctant to commit to borderline PCL predictions. Adding the category head — which forces the encoder to simultaneously represent all seven PCL mechanisms — pushes it to predict PCL more readily at a given confidence level. This substantially closes the recall gap (0.6181 vs.\ 0.5276) at a modest precision cost (0.6212 vs.\ 0.6954), yielding a more balanced F1.
+Without the category head, the model is already very precise (P = 0.6954) but under-predicts (R = 0.5276): focal loss suppresses false positives effectively, but the encoder without the auxiliary signal is reluctant to commit to borderline PCL predictions. Adding the category head — which forces the encoder to simultaneously represent all seven PCL mechanisms — pushes it to predict PCL more readily at a given confidence level. This substantially closes the recall gap (0.6382 vs.\ 0.5276) at a precision cost (0.5991 vs.\ 0.6954), yielding a more balanced F1.
 
-At the individual example level the margin is fairly narrow: the best model wins 26 cases the ablation misses, mostly multi-category examples (e.g.\ Unbalanced power relations + Compassion, or Presupposition + Metaphor) where representing multiple PCL mechanisms simultaneously matters. The 37 ablation wins are predominantly false positives the full model avoids, consistent with its slightly lower precision. The 114 \textit{both wrong} cases largely overlap with the baseline hard set, confirming they are genuinely ambiguous examples that neither architectural choice resolves.
+At the individual example level the margin is fairly narrow: the best model wins 29 cases the ablation misses, mostly multi-category examples (e.g.\ Unbalanced power relations + Compassion, or Presupposition + Metaphor) where representing multiple PCL mechanisms simultaneously matters. The 46 ablation wins are predominantly false positives the full model avoids, consistent with its lower precision. The 111 \textit{both wrong} cases largely overlap with the baseline hard set, confirming they are genuinely ambiguous examples that neither architectural choice resolves.
 
 \end{document}
